@@ -1,2 +1,9 @@
-*.class
-*.log
+# sbt
+target
+
+#eclipse
+.cache
+.classpath
+.project
+.settings/
+.worksheet/
