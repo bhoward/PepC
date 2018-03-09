@@ -1,6 +1,6 @@
 package edu.depauw.pepc
 
-// TODO add comments, #include, hex literals
+// TODO add comments, #include
 
 object Grammar {
   val White = fastparse.WhitespaceApi.Wrapper {
