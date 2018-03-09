@@ -3,7 +3,9 @@ target
 
 #eclipse
 .cache
+.cache-main
 .classpath
 .project
 .settings/
 .worksheet/
+/bin/
