@@ -17,6 +17,7 @@ object Grammar {
 
   import fastparse.noApi._
   import White._
+  import Lexical._
 
   val translationUnit = P {
     externalDeclaration.rep ~ End
@@ -176,29 +177,56 @@ object Grammar {
       ("break" ~/ ";") |
       ("return" ~/ expression ~ ";")
   }
+}
 
-  // TODO turn off whitespace in the following
+object Lexical {
+  import fastparse.all._
 
-  val identifier = P { letter ~ (letter | digit).rep.! }
-
-  val integerConstant = P {
-    (digit.rep(1).!) |
-      ("0x" ~ hexDigit.rep(1).!)
+  val identifier: P[String] = P {
+    (letter ~ (letter | digit).rep).!
   }
 
-  val hexDigit = P { CharIn('0' to '9', 'a' to 'f', 'A' to 'F') }
+  val integerConstant: P[Int] = P {
+    ("0x" ~/ hexDigit.rep(1).!.map(Integer.parseInt(_, 16))) |
+      ("0" ~/ octalDigit.rep).!.map(Integer.parseInt(_, 8)) |
+      digit.rep(1).!.map(_.toInt)
+  }
+
+  val string: P[String] = P {
+    "\"" ~/ (strChars | escape).rep.! ~ "\""
+  }.map(unescape)
+
+  val characterConstant: P[Char] = P {
+    "'" ~/ (CharPred(!"'\\\n".contains(_: Char)) | escape).! ~ "'"
+  }.map(s => unescape(s).charAt(0))
 
   val hexEscape = P { "x" ~ hexDigit ~ hexDigit }
 
-  val escape = P { "\\" ~ (CharIn("\"'\\abfnrtv") | hexEscape) }
+  val octalEscape = P {
+    octalDigit.rep(min = 1, max = 3)
+  }
 
-  val strChars = P { CharsWhile(!"\"\\\n".contains(_: Char)) }
+  val escape = P { "\\" ~ (CharIn("\"'\\abfnrtv") | hexEscape | octalEscape) }
 
-  val characterConstant = P { "'" ~/ (CharPred(!"'\\\n".contains(_: Char)) | escape) ~ "'" }
+  val strChars = CharsWhile(!"\"\\\n".contains(_: Char))
 
-  val string = P { "\"" ~/ (strChars | escape).rep.! ~ "\"" }
+  val letter = CharIn('A' to 'Z', 'a' to 'z', "_")
 
-  val letter = P { CharIn('A' to 'Z', 'a' to 'z', "_") }
+  val digit = CharIn('0' to '9')
 
-  val digit = P { CharIn('0' to '9') }
+  val hexDigit = CharIn('0' to '9', 'a' to 'f', 'A' to 'F')
+
+  val octalDigit = CharIn('0' to '7')
+
+  def unescape(s: String): String = {
+    var s2 = s.replaceAllLiterally("\\a", "\007").replaceAllLiterally("\\v", "\013")
+    while (s2.contains("\\x")) {
+      val index = s2.indexOf("\\x")
+      val left = s2.substring(0, index)
+      val mid = s2.substring(index + 2, index + 4)
+      val right = s2.substring(index + 4)
+      s2 = left + Integer.parseInt(mid, 16).toChar + right
+    }
+    StringContext.treatEscapes(s2)
+  }
 }

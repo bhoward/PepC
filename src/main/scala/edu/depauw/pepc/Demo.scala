@@ -1,5 +1,7 @@
 package edu.depauw.pepc
 
+import fastparse.core.Parsed
+
 object Demo extends App {
   val src =
     """int main() {
@@ -7,8 +9,9 @@ object Demo extends App {
       |   return 0;
       |}
     """.stripMargin
-  
-  val result = Grammar.functionDefinition.parse(src)
-  
-  println(result)
+
+  println(Grammar.translationUnit.parse(src))
+  println(Lexical.string.parse(""""H\145llo\x20World\x2A" """))
+  println(Lexical.identifier.parse("H3110_Wørld"))
+  println(Lexical.characterConstant.parse("'\\''"))
 }
