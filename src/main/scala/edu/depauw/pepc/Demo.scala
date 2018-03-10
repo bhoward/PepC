@@ -4,9 +4,12 @@ import fastparse.core.Parsed
 
 object Demo extends App {
   val src =
-    """int main() {
-      |   printf("Hello, world!\n");
-      |   return 0;
+    """/** demo // hello world */
+      |#include <stdio.h>
+      |
+      |int main(/**/) { //
+      |   printf("Hello, world!\n"); // not a /* comment
+      |   return 0;/***/
       |}
     """.stripMargin
 

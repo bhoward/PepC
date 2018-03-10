@@ -1,15 +1,14 @@
 package edu.depauw.pepc
 
-// TODO add comments, #include
-
 object Grammar {
   val White = fastparse.WhitespaceApi.Wrapper {
     import fastparse.all._
 
-    val ws = P { CharIn(" \t\n\r") }
+    val ws = P { CharIn(" \t\f\n\r") }
 
     val comment = P {
-      "/*" ~ ("x").rep ~ "*/" // TODO
+      ("/*" ~/ (CharsWhile(_ != '*') | ("*" ~ !"/")).rep ~ "*/") |
+        ("//" ~/ CharsWhile(_ != '\n').? ~ "\n")
     }
 
     NoTrace((ws | comment).rep)
@@ -20,9 +19,14 @@ object Grammar {
   import Lexical._
 
   val translationUnit = P {
-    externalDeclaration.rep ~ End
+    Start ~ include.rep ~ externalDeclaration.rep ~ End
   }
 
+  // These are just here to be ignored -- there will be no preprocessor...
+  val include = P {
+    "#include" ~ "<" ~ CharsWhile(_ != '>') ~ ">"
+  }
+  
   val externalDeclaration = P {
     functionDefinition | declaration
   }
