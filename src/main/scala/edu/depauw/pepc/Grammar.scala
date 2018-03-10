@@ -26,7 +26,7 @@ object Grammar {
   val include = P {
     "#include" ~ "<" ~ CharsWhile(_ != '>') ~ ">"
   }
-  
+
   val externalDeclaration = P {
     functionDefinition | declaration
   }
@@ -35,9 +35,9 @@ object Grammar {
     typeSpecifier ~ functionDeclarator ~ compoundStatement
   }
 
-  val declaration = P {
+  val declaration: P[Decl] = P {
     typeSpecifier ~ initDeclarator.rep(1) ~ ";"
-  }
+  }.map(_ => ???)
 
   val typeSpecifier = P {
     "void" | "char" | "int" // TODO
@@ -55,78 +55,125 @@ object Grammar {
     "*".rep ~ identifier ~ ("[" ~/ integerConstant ~ "]").?
   }
 
-  val assignmentExpression = P {
-    conditionalExpression.rep(1, assignmentOperator) // TODO should be unaryExpression on the lhs
+  val assignmentExpression: P[Expr] = P {
+    (conditionalExpression ~ (assignmentOperator ~/ assignmentExpression).?).map {
+      case (e, None)            => e
+      case (e1, Some((op, e2))) => BinOpExpr(e1, op, e2)
+    }
   }
 
-  val assignmentOperator = P {
-    "=" | "+=" | "-=" // TODO
+  val assignmentOperator: P[String] = P {
+    ("=" | "+=" | "-=" | "*=" | "/=" | "%=" | "<<=" | ">>=" | "&=" | "|=" | "^=").!
   }
 
-  val unaryExpression = P {
-    unaryOperator.rep ~ postfixExpression
+  val unaryExpression: P[Expr] = P {
+    (unaryOperator ~ unaryExpression).map { case (op, e) => UnOpExpr(op, e) } |
+      postfixExpression
   }
 
-  val unaryOperator = P {
-    "&" | "*" | "+" | "-" | "~" | "!" | "++" | "--"
+  val unaryOperator: P[String] = P {
+    ("&" | "*" | "+" | "-" | "~" | "!" | "++" | "--").!
   }
 
-  val postfixExpression = P {
+  val postfixExpression: P[Expr] = P {
     primaryExpression ~ (
-      ("[" ~/ expression ~ "]") |
-      ("(" ~/ expression.rep(0, ",") ~ ")") |
-      ("." ~/ identifier) |
-      ("->" ~/ identifier) |
-      "++" |
-      "--").rep
+      ("[" ~/ expression ~ "]").map(e2 => (e1: Expr) => IndexExpr(e1, e2)) |
+      ("(" ~/ expression.rep(sep = ",") ~ ")").map(args => (e1: Expr) => CallExpr(e1, args)) |
+      ("." ~/ identifier).map(id => (e1: Expr) => FieldExpr(e1, id)) |
+      ("->" ~/ identifier).map(id => (e1: Expr) => FieldExpr(UnOpExpr("*", e1), id)) |
+      ("++" | "--").!.map(op => (e1: Expr) => PostOp(e1, op))).rep
+  } map {
+    case (pe, mods) => mods.foldLeft(pe) { case (e, mod) => mod(e) }
   }
 
-  val primaryExpression = P {
-    identifier | constant | string | ("(" ~/ expression ~ ")")
+  val primaryExpression: P[Expr] = P {
+    identifier.map(id => IdExpr(id)) |
+      constant |
+      string.map(s => StrExpr(s)) |
+      ("(" ~/ expression ~ ")")
   }
 
-  val expression: P[Unit] = P {
-    assignmentExpression.map(_ => ())
+  val expression: P[Expr] = P {
+    assignmentExpression
   }
 
-  val conditionalExpression = P {
-    logicalOrExpression
+  val conditionalExpression: P[Expr] = P {
+    logicalOrExpression // TODO add the ?: operator?
   }
 
-  val logicalOrExpression = P {
-    logicalAndExpression.rep(1, "||")
+  val logicalOrExpression: P[Expr] = P {
+    (logicalAndExpression ~ ("||" ~ logicalAndExpression).rep).map {
+      case (e, es) => es.foldLeft(e) { case (e1, e2) => BinOpExpr(e1, "||", e2) }
+    }
   }
 
-  val logicalAndExpression = P {
-    inclusiveOrExpression.rep(1, "&&")
+  val logicalAndExpression: P[Expr] = P {
+    (inclusiveOrExpression ~ ("&&" ~ inclusiveOrExpression).rep).map {
+      case (e, es) => es.foldLeft(e) { case (e1, e2) => BinOpExpr(e1, "&&", e2) }
+    }
   }
 
-  val inclusiveOrExpression = P {
-    exclusiveOrExpression.rep(1, "|")
+  val inclusiveOrExpression: P[Expr] = P {
+    (exclusiveOrExpression ~ ("|" ~ exclusiveOrExpression).rep).map {
+      case (e, es) => es.foldLeft(e) { case (e1, e2) => BinOpExpr(e1, "|", e2) }
+    }
   }
 
-  val exclusiveOrExpression = P {
-    andExpression.rep(1, "^")
+  val exclusiveOrExpression: P[Expr] = P {
+    (andExpression ~ ("^" ~ andExpression).rep).map {
+      case (e, es) => es.foldLeft(e) { case (e1, e2) => BinOpExpr(e1, "^", e2) }
+    }
   }
 
-  val andExpression = P {
-    relationalExpression.rep(1, "&")
+  val andExpression: P[Expr] = P {
+    (relationalExpression ~ ("&" ~ relationalExpression).rep).map {
+      case (e, es) => es.foldLeft(e) { case (e1, e2) => BinOpExpr(e1, "&", e2) }
+    }
   }
 
-  val relationalExpression = P {
-    shiftExpression ~ (("==" | "!=" | "<=" | ">=" | "<" | ">") ~ shiftExpression).?
+  val relationalExpression: P[Expr] = P {
+    (shiftExpression ~ (relationalOperator ~ shiftExpression).rep(max = 1)).map {
+      case (e, ops) => ops.foldLeft(e) { case (e1, (op, e2)) => BinOpExpr(e1, op, e2) }
+    }
   }
 
-  val shiftExpression = P {
-    additiveExpression.rep(1, "<<" | ">>")
+  val relationalOperator: P[String] = P {
+    ("==" | "!=" | "<=" | ">=" | "<" | ">").!
   }
 
-  val additiveExpression = P {
-    multiplicativeExpression.rep(1, "+" | "-")
+  val shiftExpression: P[Expr] = P {
+    (additiveExpression ~ (shiftOperator ~ additiveExpression).rep).map {
+      case (e, ops) => ops.foldLeft(e) { case (e1, (op, e2)) => BinOpExpr(e1, op, e2) }
+    }
   }
 
-  val multiplicativeExpression = P {
-    unaryExpression.rep(1, "*" | "/" | "%")
+  val shiftOperator: P[String] = P {
+    ("<<" | ">>").!
+  }
+
+  val additiveExpression: P[Expr] = P {
+    (multiplicativeExpression ~ (additiveOperator ~ multiplicativeExpression).rep).map {
+      case (e, ops) => ops.foldLeft(e) { case (e1, (op, e2)) => BinOpExpr(e1, op, e2) }
+    }
+  }
+
+  val additiveOperator: P[String] = P {
+    ("+" | "-").!
+  }
+
+  val multiplicativeExpression: P[Expr] = P {
+    (unaryExpression ~ (multiplicativeOperator ~ unaryExpression).rep).map {
+      case (e, ops) => ops.foldLeft(e) { case (e1, (op, e2)) => BinOpExpr(e1, op, e2) }
+    }
+  }
+
+  val multiplicativeOperator: P[String] = P {
+    ("*" | "/" | "%").!
+  }
+
+  val constant: P[Expr] = P {
+    integerConstant.map(n => IntExpr(n)) |
+      characterConstant.map(c => CharExpr(c))
   }
 
   val parameterList = P {
@@ -137,50 +184,48 @@ object Grammar {
     typeSpecifier ~ "*".rep ~ identifier
   }
 
-  val compoundStatement = P {
-    "{" ~ declaration.rep ~ statement.rep ~ "}"
+  val compoundStatement: P[Stmt] = P {
+    ("{" ~ declaration.rep ~ statement.rep ~ "}").map {
+      case (decls, stmts) => CompoundStmt(decls, stmts)
+    }
   }
 
-  val constant = P {
-    integerConstant | characterConstant
-  }
-
-  val statement: P[Unit] = P {
-    (labeledStatement |
+  val statement: P[Stmt] = P {
+    labeledStatement |
       jumpStatement |
       compoundStatement |
       selectionStatement |
       iterationStatement |
-      expressionStatement).map(_ => ())
+      expressionStatement
   }
 
-  val labeledStatement = P {
+  val labeledStatement: P[Stmt] = P {
     (identifier ~ ":" ~/ statement) |
       ("case" ~/ constant ~ ":" ~ statement) |
       ("default" ~/ ":" ~ statement)
-  }
+  }.map(_ => ???)
 
-  val expressionStatement = P {
+  val expressionStatement: P[Stmt] = P {
     expression.? ~ ";"
-  }
+  }.map(_ => ???)
 
-  val selectionStatement = P {
+  val selectionStatement: P[Stmt] = P {
     ("if" ~/ "(" ~ expression ~ ")" ~ statement ~ ("else" ~ statement).?) |
       ("switch" ~/ "(" ~ expression ~ ")" ~ statement)
-  }
+  }.map(_ => ???)
 
-  val iterationStatement = P {
+  val iterationStatement: P[Stmt] = P {
     ("while" ~/ "(" ~ expression ~ ")" ~ statement) |
       ("do" ~/ statement ~ "while" ~ "(" ~ expression ~ ")" ~ ";") |
       ("for" ~/ "(" ~ expression.? ~ ";" ~ expression.? ~ ";" ~ expression.? ~ ")" ~ statement)
-  }
+  }.map(_ => ???)
 
-  val jumpStatement = P {
+  val jumpStatement: P[Stmt] = P {
     ("goto" ~/ identifier ~ ";") |
       ("continue" ~/ ";") |
       ("break" ~/ ";") |
       ("return" ~/ expression ~ ";")
-  }
+  }.map(_ => ???)
 }
 
 object Lexical {
