@@ -200,32 +200,51 @@ object Grammar {
   }
 
   val labeledStatement: P[Stmt] = P {
-    (identifier ~ ":" ~/ statement) |
-      ("case" ~/ constant ~ ":" ~ statement) |
-      ("default" ~/ ":" ~ statement)
-  }.map(_ => ???)
+    (identifier ~ ":" ~/ statement).map { case (id, s) => LabelStmt(id, s) } |
+      ("case" ~/ constant ~ ":" ~ statement).map { case (v, s) => CaseStmt(v, s) } |
+      ("default" ~/ ":" ~ statement).map { case s => DefaultStmt(s) }
+  }
 
   val expressionStatement: P[Stmt] = P {
-    expression.? ~ ";"
-  }.map(_ => ???)
+    (expression.? ~ ";").map {
+      case None    => EmptyStmt
+      case Some(e) => ExprStmt(e)
+    }
+  }
 
   val selectionStatement: P[Stmt] = P {
-    ("if" ~/ "(" ~ expression ~ ")" ~ statement ~ ("else" ~ statement).?) |
-      ("switch" ~/ "(" ~ expression ~ ")" ~ statement)
-  }.map(_ => ???)
+    ("if" ~/ "(" ~ expression ~ ")" ~ statement ~ ("else" ~ statement).?).map {
+      case (e, s, None)      => IfStmt(e, s, EmptyStmt)
+      case (e, s1, Some(s2)) => IfStmt(e, s1, s2)
+    } |
+      ("switch" ~/ "(" ~ expression ~ ")" ~ statement).map {
+        case (e, s) => SwitchStmt(e, s)
+      }
+  }
 
   val iterationStatement: P[Stmt] = P {
-    ("while" ~/ "(" ~ expression ~ ")" ~ statement) |
-      ("do" ~/ statement ~ "while" ~ "(" ~ expression ~ ")" ~ ";") |
-      ("for" ~/ "(" ~ expression.? ~ ";" ~ expression.? ~ ";" ~ expression.? ~ ")" ~ statement)
-  }.map(_ => ???)
+    ("while" ~/ "(" ~ expression ~ ")" ~ statement).map {
+      case (e, s) => WhileStmt(e, s)
+    } |
+      ("do" ~/ statement ~ "while" ~ "(" ~ expression ~ ")" ~ ";").map {
+        case (s, e) => DoStmt(s, e)
+      } |
+      ("for" ~/ "(" ~ expression.? ~ ";" ~ expression.? ~ ";" ~ expression.? ~ ")" ~ statement).map {
+        case (opte1, opte2, opte3, s) => ForStmt(opte2s(opte1), opte2s(opte2), opte2s(opte3), s)
+      }
+  }
+
+  def opte2s(opte: Option[Expr]): Stmt = opte match {
+    case None    => EmptyStmt
+    case Some(e) => ExprStmt(e)
+  }
 
   val jumpStatement: P[Stmt] = P {
-    ("goto" ~/ identifier ~ ";") |
-      ("continue" ~/ ";") |
-      ("break" ~/ ";") |
-      ("return" ~/ expression ~ ";")
-  }.map(_ => ???)
+    ("goto" ~/ identifier ~ ";").map(id => GotoStmt(id)) |
+      ("continue" ~/ ";").map(_ => ContinueStmt) |
+      ("break" ~/ ";").map(_ => BreakStmt) |
+      ("return" ~/ expression ~ ";").map(e => ReturnStmt(e))
+  }
 }
 
 object Lexical {

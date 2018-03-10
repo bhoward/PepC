@@ -14,6 +14,19 @@ final case class PostOp(e: Expr, op: String) extends Expr
 
 sealed trait Stmt
 final case class CompoundStmt(decls: Seq[Decl], stmts: Seq[Stmt]) extends Stmt
+final case class LabelStmt(label: String, stmt: Stmt) extends Stmt
+final case class CaseStmt(value: Expr, stmt: Stmt) extends Stmt
+final case class DefaultStmt(stmt: Stmt) extends Stmt
 final case class ExprStmt(e: Expr) extends Stmt
+final case class IfStmt(test: Expr, yes: Stmt, no: Stmt) extends Stmt
+final case class SwitchStmt(e: Expr, s: Stmt) extends Stmt
+final case class WhileStmt(test: Expr, body: Stmt) extends Stmt
+final case class DoStmt(body: Stmt, test: Expr) extends Stmt
+final case class ForStmt(init: Stmt, test: Stmt, update: Stmt, body: Stmt) extends Stmt
+final case class GotoStmt(label: String) extends Stmt
+final case class ReturnStmt(e: Expr) extends Stmt
+final case object BreakStmt extends Stmt
+final case object ContinueStmt extends Stmt
+final case object EmptyStmt extends Stmt
 
 sealed trait Decl
