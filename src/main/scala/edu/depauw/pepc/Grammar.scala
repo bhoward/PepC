@@ -18,8 +18,8 @@ object Grammar {
   import White._
   import Lexical._
 
-  val translationUnit = P {
-    Start ~ include.rep ~ externalDeclaration.rep ~ End
+  val translationUnit: P[Seq[Decl]] = P {
+    Start ~ include.rep ~ externalDeclaration.rep.map(_.flatten) ~ End
   }
 
   // These are just here to be ignored -- there will be no preprocessor...
@@ -27,32 +27,77 @@ object Grammar {
     "#include" ~ "<" ~ CharsWhile(_ != '>') ~ ">"
   }
 
-  val externalDeclaration = P {
-    functionDefinition | declaration
+  val externalDeclaration: P[Seq[Decl]] = P {
+    functionDefinition.map(d => Seq(d)) |
+      structDefinition.map(d => Seq(d)) |
+      declaration
   }
 
-  val functionDefinition = P {
-    typeSpecifier ~ functionDeclarator ~ compoundStatement
+  val functionDefinition: P[Decl] = P {
+    (typeSpecifier ~ functionDeclarator ~ compoundStatement).map {
+      case (t, dtor, body) => FunctionDecl(t, dtor, body)
+    }
   }
 
-  val declaration: P[Decl] = P {
-    typeSpecifier ~ initDeclarator.rep(1) ~ ";"
-  }.map(_ => ???)
-
-  val typeSpecifier = P {
-    "void" | "char" | "int" // TODO
+  val declaration: P[Seq[Decl]] = P {
+    (typeSpecifier ~ initDeclarator.rep(1, ",") ~ ";").map {
+      case (t, dtors) => dtors.map(dtor => VarDecl(t, dtor))
+    }
   }
 
-  val functionDeclarator = P {
-    "*".rep ~ identifier ~ "(" ~/ parameterList ~ ")"
+  val typeSpecifier: P[Type] = P {
+    "void".!.map(_ => VoidType) |
+      "char".!.map(_ => CharType) |
+      "int".!.map(_ => IntType) |
+      "bool".!.map(_ => BoolType) |
+      ("const" ~ "char").map(_ => ConstCharType) |
+      ("const" ~ "int").map(_ => ConstIntType) |
+      ("struct" ~ identifier).map(StructType)
   }
 
-  val initDeclarator = P {
-    declarator ~ ("=" ~/ assignmentExpression).?
+  val structDefinition: P[Decl] = P {
+    ("struct" ~ identifier ~ "{" ~ structDeclaration.rep(1) ~ "}" ~ ";").map {
+      case (id, fields) => StructDecl(id, fields.flatten)
+    }
   }
 
-  val declarator = P {
-    "*".rep ~ identifier ~ ("[" ~/ integerConstant ~ "]").?
+  val structDeclaration: P[Seq[Decl]] = P {
+    (typeSpecifier ~ declarator.rep ~ ";").map {
+      case (t, dtors) => dtors.map(dtor => VarDecl(t, dtor))
+    }
+  }
+
+  val functionDeclarator: P[FunDtor] = P {
+    (identifier ~ "(" ~/ parameterList ~ ")").map {
+      case (id, params) => FunDtor(id, params)
+    }
+  }
+
+  val parameterList: P[Seq[Decl]] = P {
+    parameterDeclaration.rep(0, ",")
+  }
+
+  val parameterDeclaration: P[Decl] = P {
+    (typeSpecifier ~ "*".!.? ~ identifier ~ ("[" ~ "]").!.?).map {
+      case (t, None, id, None)    => VarDecl(t, VarDtor(id))
+      case (t, None, id, Some(_)) => VarDecl(t, PtrDtor(id))
+      case (t, Some(_), id, _)    => VarDecl(t, PtrDtor(id)) // don't handle arrays of pointers...
+    }
+  }
+
+  val initDeclarator: P[Dtor] = P {
+    (declarator ~ ("=" ~/ assignmentExpression).?).map {
+      case (dtor, None)    => dtor
+      case (dtor, Some(e)) => InitDtor(dtor, e)
+    }
+  }
+
+  val declarator: P[Dtor] = P {
+    ("*" ~ identifier).map(PtrDtor) |
+      (identifier ~ ("[" ~/ integerConstant ~ "]").?).map {
+        case (id, None)      => VarDtor(id)
+        case (id, Some(dim)) => ArrayDtor(id, dim)
+      }
   }
 
   val assignmentExpression: P[Expr] = P {
@@ -68,11 +113,20 @@ object Grammar {
 
   val unaryExpression: P[Expr] = P {
     (unaryOperator ~ unaryExpression).map { case (op, e) => UnOpExpr(op, e) } |
+      (castOperator ~ unaryExpression).map { case (t, e) => CastExpr(t, e) } |
+      ("sizeof" ~ "(" ~ typeSpecifier ~ ")").map { case t => SizeOfExpr(t) } |
       postfixExpression
   }
 
   val unaryOperator: P[String] = P {
     ("&" | "*" | "+" | "-" | "~" | "!" | "++" | "--").!
+  }
+
+  val castOperator: P[Type] = P {
+    ("(" ~ typeSpecifier ~ "*".!.? ~ ")").map {
+      case (t, None)    => t
+      case (t, Some(_)) => PtrType(t)
+    }
   }
 
   val postfixExpression: P[Expr] = P {
@@ -87,8 +141,8 @@ object Grammar {
   }
 
   val primaryExpression: P[Expr] = P {
-    identifier.map(id => IdExpr(id)) |
-      constant |
+    constant |
+      identifier.map(id => IdExpr(id)) |
       string.map(s => StrExpr(s)) |
       ("(" ~/ expression ~ ")")
   }
@@ -171,22 +225,16 @@ object Grammar {
     ("*" | "/" | "%").!
   }
 
-  val constant: P[Expr] = P {
+  val constant: P[ConstExpr] = P {
     integerConstant.map(n => IntExpr(n)) |
-      characterConstant.map(c => CharExpr(c))
-  }
-
-  val parameterList = P {
-    parameterDeclaration.rep(0, ",")
-  }
-
-  val parameterDeclaration = P {
-    typeSpecifier ~ "*".rep ~ identifier
+      characterConstant.map(c => CharExpr(c)) |
+      "true".!.map(_ => BoolExpr(true)) |
+      "false".!.map(_ => BoolExpr(false))
   }
 
   val compoundStatement: P[Stmt] = P {
     ("{" ~ declaration.rep ~ statement.rep ~ "}").map {
-      case (decls, stmts) => CompoundStmt(decls, stmts)
+      case (decls, stmts) => CompoundStmt(decls.flatten, stmts)
     }
   }
 
@@ -230,13 +278,12 @@ object Grammar {
         case (s, e) => DoStmt(s, e)
       } |
       ("for" ~/ "(" ~ expression.? ~ ";" ~ expression.? ~ ";" ~ expression.? ~ ")" ~ statement).map {
-        case (opte1, opte2, opte3, s) => ForStmt(opte2s(opte1), opte2s(opte2), opte2s(opte3), s)
+        case (initOpt, testOpt, updateOpt, body) =>
+          val init = initOpt.map(ExprStmt).getOrElse(EmptyStmt)
+          val test = testOpt.getOrElse(IntExpr(1))
+          val update = updateOpt.map(ExprStmt).getOrElse(EmptyStmt)
+          ForStmt(init, test, update, body)
       }
-  }
-
-  def opte2s(opte: Option[Expr]): Stmt = opte match {
-    case None    => EmptyStmt
-    case Some(e) => ExprStmt(e)
   }
 
   val jumpStatement: P[Stmt] = P {
