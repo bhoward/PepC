@@ -17,9 +17,10 @@ object Demo extends App {
   println(Lexical.string.parse(""""H\145llo\x20World\x2A" """))
   println(Lexical.identifier.parse("H3110_Wørld"))
   println(Lexical.characterConstant.parse("'\\''"))
+  println("-------")
   
   import scala.io.Source
-  
+
   val examples =
     List("519", "522", "527", "604", "606", "608", "610", "612",
       "614", "618", "621", "623", "625", "627", "629", "632",
@@ -28,6 +29,8 @@ object Demo extends App {
     val file = s"examples/fig0$example.c"
     println(file)
     val source = Source.fromFile(file).mkString
-    println(Grammar.translationUnit.parse(source))
+    val Parsed.Success(result, index) = Grammar.translationUnit.parse(source)
+    println(result)
+    println("-------")
   }
 }
