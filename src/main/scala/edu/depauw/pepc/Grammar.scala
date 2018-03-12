@@ -50,8 +50,8 @@ object Grammar {
       "char".!.map(_ => CharType) |
       "int".!.map(_ => IntType) |
       "bool".!.map(_ => BoolType) |
-      ("const" ~ "char").map(_ => ConstCharType) |
-      ("const" ~ "int").map(_ => ConstIntType) |
+      ("const" ~ "char").map(_ => ConstType(CharType)) |
+      ("const" ~ "int").map(_ => ConstType(IntType)) |
       ("struct" ~ identifier).map(StructType)
   }
 
