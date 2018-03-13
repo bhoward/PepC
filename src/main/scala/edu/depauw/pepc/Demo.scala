@@ -31,6 +31,7 @@ object Demo extends App {
     val source = Source.fromFile(file).mkString
     val Parsed.Success(result, index) = Grammar.translationUnit.parse(source)
     println(result)
+    println(Analyze.collectProgram(result))
     println("-------")
   }
 }
