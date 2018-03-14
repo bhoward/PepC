@@ -43,7 +43,7 @@ final case class UnOpExpr(op: String, e: Expr) extends Expr {
   }
 }
 final case class PostOp(e: Expr, op: String) extends Expr
-final case class IdExpr(id: String) extends Expr // TODO look for a constant in symbol table?
+final case class IdExpr(id: String) extends Expr // TODO look for a constant value in symbol table?
 final case class StrExpr(s: String) extends Expr
 final case class IndexExpr(e1: Expr, e2: Expr) extends Expr
 final case class CallExpr(e1: Expr, args: Seq[Expr]) extends Expr
